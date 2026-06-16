@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตูบปะทะเหมียว: ศึกหมากรุกสุดกวน (Dog vs Cat Chess)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;600;700&family=Mitr:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Mitr', 'Chakra Petch', sans-serif;
+            background: radial-gradient(circle, #0f172a 0%, #020617 100%);
+            color: #f8fafc;
+        }
+        .chess-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ef4444;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+    <!-- Web Audio & Music Engine -->
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let bgmInterval = null;
+        let isMuted = false;
+
+        function playTone(freq, type, duration, delay = 0) {
+            if (isMuted) return;
+            setTimeout(() => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            }, delay * 1000);
+        }
+
+        function playMoveSound() {
+            playTone(300, 'sine', 0.15);
+            playTone(450, 'sine', 0.1, 0.05);
+        }
+
+        function playCaptureSound() {
+            playTone(150, 'sawtooth', 0.2);
+            playTone(100, 'sawtooth', 0.15, 0.08);
+            playTone(350, 'triangle', 0.1, 0.02);
+        }
+
+        function playVictorySound() {
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, idx) => {
+                playTone(freq, 'triangle', 0.3, idx * 0.15);
+            });
+        }
+
+        function playDefeatSound() {
+            const notes = [392.00, 349.23, 311.13, 261.63];
+            notes.forEach((freq, idx) => {
+                playTone(freq, 'sawtooth', 0.4, idx * 0.2);
+            });
+        }
+
+        function startBGM() {
+            if (bgmInterval) clearInterval(bgmInterval);
+            let step = 0;
+            const melody = [
+                261.63, 293.66, 329.63, 392.00, 440.00, 523.25,
+                392.00, 329.63, 293.66, 329.63, 392.00, 261.63
+            ];
+            bgmInterval = setInterval(() => {
+                if (!isMuted) {
+                    const freq = melody[step % melody.length];
+                    playTone(freq, 'sine', 0.5);
+                    if (step % 2 === 0) {
+                        playTone(freq / 2, 'triangle', 0.8, 0.1);
+                    }
+                }
+                step++;
+            }, 600);
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('muteBtn');
+            if (isMuted) {
+                btn.innerHTML = '<i class="fas fa-volume-mute mr-2"></i>เปิดเสียง';
+                btn.classList.replace('bg-rose-600', 'bg-gray-600');
+            } else {
+                btn.innerHTML = '<i class="fas fa-volume-up mr-2"></i>ปิดเสียง';
+                btn.classList.replace('bg-gray-600', 'bg-rose-600');
+                audioCtx.resume();
+            }
+        }
+    </script>
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-red-500/30 p-4 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-red-600 p-2.5 rounded-2xl shadow-lg shadow-red-500/50 animate-bounce">
+                    <span class="text-3xl">🐶</span>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-yellow-400 to-sky-400">
+                        ตูบปะทะเหมียว
+                    </h1>
+                    <p class="text-xs text-slate-400">ศึกหมากรุก สีแดง 🔴 ปะทะ สีฟ้า 🔵 (Google Sheets Backend)</p>
+                </div>
+                <div class="bg-sky-600 p-2.5 rounded-2xl shadow-lg shadow-sky-500/50 animate-bounce" style="animation-delay: 0.3s">
+                    <span class="text-3xl">🐱</span>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex gap-2 flex-wrap items-center">
+                <button id="muteBtn" onclick="toggleMute()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold shadow-md transition duration-200">
+                    <i class="fas fa-volume-up mr-2"></i>ปิดเสียง
+                </button>
+                <div class="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-sm">
+                    🌐 บัญชี Google Sheets: <span id="dbStatus" class="text-yellow-400 font-bold">รอการเชื่อมต่อ</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 flex flex-col lg:flex-row gap-6 items-stretch">
+
+        <!-- Left Column -->
+        <div class="w-full lg:w-1/3 flex flex-col gap-4">
+            
+            <!-- User Settings -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-red-500/20 p-5 rounded-3xl shadow-xl">
+                <h3 class="text-lg font-bold mb-3 flex items-center gap-2 text-red-400">
+                    <i class="fas fa-user-circle"></i> ข้อมูลตัวตนของคุณ
+                </h3>
+                <div class="flex gap-2">
+                    <input type="text" id="usernameInput" value="นักเล่นพเนจร" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 w-full text-white focus:outline-none focus:border-red-500 transition">
+                    <button onclick="saveUsername()" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-xl text-sm font-semibold transition">บันทึก</button>
+                </div>
+                <p class="text-xs text-slate-400 mt-2">ตั้งชื่อเพื่อเข้าสู่ศึกทีมสุนัขสีแดงสุดน่ารัก!</p>
+            </div>
+
+            <!-- Mode Selector -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-red-500/20 p-5 rounded-3xl shadow-xl">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2 text-red-400">
+                    <i class="fas fa-gamepad"></i> เลือกโหมดการเล่น
+                </h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="selectMode('ai')" id="btnModeAI" class="p-4 rounded-2xl border-2 border-red-500 bg-red-950/40 flex flex-col items-center justify-center text-center gap-2 transition hover:scale-105">
+                        <span class="text-3xl">🤖</span>
+                        <span class="font-bold text-sm text-red-400">สู้กับบอทเอ๋อ</span>
+                        <span class="text-[10px] text-slate-400">AI แสนซนเดินแจกหมาก</span>
+                    </button>
+                    <button onclick="selectMode('online')" id="btnModeOnline" class="p-4 rounded-2xl border-2 border-slate-800 bg-slate-800/40 flex flex-col items-center justify-center text-center gap-2 transition hover:scale-105">
+                        <span class="text-3xl">🌐</span>
+                        <span class="font-bold text-sm text-sky-400">หาเพื่อนออนไลน์</span>
+                        <span class="text-[10px] text-slate-400">เชื่อมห้อง Google Sheet</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Online Rooms -->
+            <div id="onlineRoomSection" class="hidden bg-slate-900/80 backdrop-blur-md border border-sky-500/20 p-5 rounded-3xl shadow-xl flex-grow flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold flex items-center gap-2 text-sky-400">
+                        <i class="fas fa-door-open"></i> ห้องใน Google Sheets
+                    </h3>
+                    <button onclick="createNewRoom()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded-xl font-semibold transition shadow-lg shadow-sky-500/30">
+                        <i class="fas fa-plus mr-1"></i> สร้างห้องว่าง
+                    </button>
+                </div>
+                <div id="roomsList" class="space-y-2 max-h-[180px] overflow-y-auto pr-1 flex-grow">
+                    <div class="text-center py-4 text-slate-500 text-sm">กำลังโหลดห้องว่าง...</div>
+                </div>
+            </div>
+
+            <!-- Coach Advice -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-yellow-500/20 p-5 rounded-3xl shadow-xl flex-grow flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold mb-2 flex items-center gap-2 text-yellow-400">
+                        <i class="fas fa-graduation-cap"></i> โค้ชวิเคราะห์เกมกระดาน 💡
+                    </h3>
+                    <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 min-h-[100px] text-sm text-slate-300 flex items-start gap-3">
+                        <span class="text-2xl mt-1">🧠</span>
+                        <div>
+                            <p id="coachAdvice">"ยินดีต้อนรับสู่สนามรบหมากรุก! คุณอยู่ทีมหมาแดงสุกใส คอยระวังเหมียวมึนสีฟ้าไว้ให้ดีล่ะ!"</p>
+                            <p id="coachSubAdvice" class="text-xs text-yellow-500/80 mt-2 font-semibold">แนะนำ: ขยับเบี้ยด้านหน้ากษัตริย์หรือราชินีเพื่อเปิดมุมการโจมตี!</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
+                    <span>ความยากบอท: <strong class="text-green-400">กากพิเศษ (Very Easy)</strong></span>
+                    <span>สถิติคุณ: <strong id="aiStats">ชนะ 0 | แพ้ 0</strong></span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column (Board and Matches) -->
+        <div class="w-full lg:w-2/3 flex flex-col gap-4">
+            
+            <!-- VS Players Board -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-slate-800 p-4 rounded-3xl shadow-xl flex justify-between items-center px-6">
+                <!-- Red Team (Dogs) -->
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-2xl bg-red-600/20 border-2 border-red-500 flex items-center justify-center text-2xl shadow-lg shadow-red-500/30">
+                        🐶
+                    </div>
+                    <div>
+                        <h4 id="playerWhiteName" class="font-bold text-red-400">นักเล่นพเนจร (คุณ)</h4>
+                        <span class="text-xs text-red-500 font-semibold">🔴 ทีมสีแดง (สุนัข)</span>
+                    </div>
+                </div>
+
+                <div class="text-center font-bold text-slate-600 text-lg">VS</div>
+
+                <!-- Blue Team (Cats) -->
+                <div class="flex items-center gap-3 text-right flex-row-reverse">
+                    <div class="w-12 h-12 rounded-2xl bg-sky-600/20 border-2 border-sky-500 flex items-center justify-center text-2xl shadow-lg shadow-sky-500/30">
+                        🐱
+                    </div>
+                    <div>
+                        <h4 id="playerBlackName" class="font-bold text-sky-400">บอทเหมียวมึน</h4>
+                        <span class="text-xs text-sky-500 font-semibold">🔵 ทีมสีฟ้า (แมว)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Banner -->
+            <div id="gameStatusBanner" class="bg-red-950/80 border border-red-500/40 py-2.5 px-4 rounded-2xl text-center text-sm font-semibold flex items-center justify-center gap-2 transition-colors duration-300">
+                <span id="statusPing" class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                <span id="gameStatusText" class="text-red-200">ยินดีต้อนรับ! ทีมสุนัขแดง เริ่มเดินก่อนได้เลยจ้า!</span>
+            </div>
+
+            <!-- Board -->
+            <div class="flex justify-center items-center">
+                <div class="relative w-full max-w-[500px] aspect-square bg-slate-950 p-3 rounded-3xl border-4 border-slate-800 shadow-2xl">
+                    <div id="chessboard" class="chess-grid w-full h-full rounded-xl overflow-hidden"></div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="flex justify-center gap-3">
+                <button onclick="resetGame()" class="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-semibold shadow-md transition duration-200 flex items-center gap-2">
+                    <i class="fas fa-undo"></i> เริ่มใหม่
+                </button>
+                <button onclick="concedeGame()" class="px-6 py-3 rounded-2xl bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-semibold shadow-md transition duration-200 flex items-center gap-2">
+                    <i class="fas fa-flag"></i> ยอมแพ้
+                </button>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer & Leaderboard -->
+    <footer class="bg-slate-950/90 border-t border-slate-800 p-6 mt-6">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-center md:text-left">
+                <p class="text-sm font-semibold text-slate-400">🐾 เชื่อมโยงระบบฐานข้อมูล Google Sheets บันทึกคะแนนและจับคู่จริงผ่านระบบคลาวด์!</p>
+                <p class="text-xs text-slate-600 mt-1">© 2026 Dog vs Cat Chess Game. All rights reserved.</p>
+            </div>
+            
+            <!-- Real Leaderboard Widget -->
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl w-full md:w-80">
+                <h4 class="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fas fa-trophy text-yellow-500"></i> ทำเนียบผู้พิชิตเหมียวมึน (Google Sheets)
+                </h4>
+                <div id="leaderboardRows" class="space-y-1.5 text-xs text-slate-300">
+                    <div class="text-center text-slate-500">กำลังเชื่อมต่อตารางคะแนน...</div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 🚨 สำคัญมาก: นำลิงก์ Web App URL ที่ได้จาก Google Apps Script (ตอนกด Deploy) มาใส่ในเครื่องหมายคำพูดด้านล่างนี้
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqLsoLISJ1ooKx4HqtVmQm3lo_hQSHnI-bH0SePfQ27m9Ud3YXKJu5vPSPqRJrkrOuew/exec"; 
+
+        // ตัวหมากฟอนต์อีโมจิ
+        const PIECES_EMOJI = {
+            'P': '🐶', 'R': '🐕', 'N': '🐩', 'B': '🦮', 'Q': '🫅', 'K': '🦁', // ทีมแดง (White)
+            'p': '🐱', 'r': '🐈', 'n': '🦊', 'b': '🐯', 'q': '👸', 'k': '🐆'  // ทีมฟ้า (Black)
+        };
+
+        const PIECE_NAMES = {
+            'P': 'เบี้ยน้องตูบแดง', 'R': 'ป้อมโกลเด้นแดง', 'N': 'ม้าพูเดิ้ลแดง', 'B': 'บิชอปตูบนำทางแดง', 'Q': 'ราชินีสุนัขแดงแป๊ด', 'K': 'ราชาสิงโตแดง',
+            'p': 'เบี้ยลูกแมวฟ้า', 'r': 'ป้อมแมวส้มฟ้า', 'n': 'ม้าสุนัขจิ้งจอกฟ้า', 'b': 'บิชอปเสือโคร่งฟ้า', 'q': 'ราชินีแมวสามสีฟ้า', 'k': 'ราชาเสือดาวฟ้า'
+        };
+
+        let initialBoard = [
+            ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
+            ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+            ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']
+        ];
+
+        let board = JSON.parse(JSON.stringify(initialBoard));
+        let selectedSquare = null;
+        let validMoves = [];
+        let currentTurn = 'W'; // 'W' = แดง (สุนัข), 'B' = ฟ้า (แมว)
+        let gameMode = 'ai'; // 'ai' หรือ 'online'
+        let myTeam = 'W'; // 'W' คือสุนัขแดง, 'B' คือแมวฟ้า
+        let stats = { wins: 0, losses: 0 };
+        let activeRoomId = null;
+        let pollingInterval = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initGame();
+            startBGM();
+            checkAPIStatus();
+            loadLeaderboard();
+            
+            document.body.addEventListener('click', () => {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+            }, { once: true });
+        });
+
+        // ตรวจสอบความถูกต้องของ SCRIPT_URL
+        function checkAPIStatus() {
+            const statusEl = document.getElementById('dbStatus');
+            if (SCRIPT_URL) {
+                statusEl.innerText = "เชื่อมต่อสำเร็จ 🟢";
+                statusEl.className = "text-green-400 font-bold";
+            } else {
+                statusEl.innerText = "จำลองบนเครื่อง 🟡";
+                statusEl.className = "text-yellow-400 font-bold";
+                console.warn("ยังไม่ได้กรอก SCRIPT_URL: จะใช้งานโหมดจำลองภายในเว็บแทน");
+            }
+        }
+
+        function saveUsername() {
+            const input = document.getElementById('usernameInput');
+            const name = input.value.trim() || 'นักเล่นพเนจร';
+            document.getElementById('playerWhiteName').innerText = `${name} (คุณ)`;
+            playTone(400, 'sine', 0.1);
+            loadLeaderboard();
+        }
+
+        function initGame() {
+            board = JSON.parse(JSON.stringify(initialBoard));
+            selectedSquare = null;
+            validMoves = [];
+            currentTurn = 'W';
+            renderBoard();
+            updateStatusText();
+            updateCoachAdvice();
+        }
+
+        // วาดกระดานและใส่สีสันทีมแดงทีมฟ้าอย่างสะดุดตา
+        function renderBoard() {
+            const chessboardEl = document.getElementById('chessboard');
+            chessboardEl.innerHTML = '';
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const isDark = (r + c) % 2 === 1;
+                    const piece = board[r][c];
+                    
+                    const square = document.createElement('div');
+                    square.className = `relative flex flex-col items-center justify-center text-4xl select-none cursor-pointer transition-all duration-150 aspect-square ${
+                        isDark ? 'bg-slate-900 hover:bg-slate-850' : 'bg-slate-100 hover:bg-white'
+                    }`;
+                    
+                    square.dataset.row = r;
+                    square.dataset.col = c;
+
+                    if (piece) {
+                        const pieceEl = document.createElement('span');
+                        pieceEl.innerText = PIECES_EMOJI[piece];
+                        
+                        if (isPieceWhite(piece)) {
+                            pieceEl.className = `transition-transform duration-200 filter drop-shadow-[0_4px_8px_rgba(239,68,68,0.95)] hover:scale-110 z-10`;
+                        } else {
+                            pieceEl.className = `transition-transform duration-200 filter drop-shadow-[0_4px_8px_rgba(14,165,233,0.95)] hover:scale-110 z-10`;
+                        }
+                        square.appendChild(pieceEl);
+
+                        const colorBar = document.createElement('div');
+                        colorBar.className = `absolute bottom-1 w-2/3 h-1 rounded-full ${
+                            isPieceWhite(piece) ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-sky-400 shadow-[0_0_8px_#38bdf8]'
+                        } z-20`;
+                        square.appendChild(colorBar);
+                    }
+
+                    if (selectedSquare && selectedSquare.row === r && selectedSquare.col === c) {
+                        square.classList.add('ring-4', 'ring-red-500', 'ring-inset', 'bg-red-950/20');
+                    }
+
+                    const isPossibleMove = validMoves.some(m => m.r === r && m.c === c);
+                    if (isPossibleMove) {
+                        const dot = document.createElement('div');
+                        dot.className = `absolute w-4 h-4 rounded-full ${board[r][c] ? 'bg-rose-600/90 ring-4 ring-rose-400 animate-ping' : 'bg-green-500/70'}`;
+                        square.appendChild(dot);
+                    }
+
+                    square.addEventListener('click', () => handleSquareClick(r, c));
+                    chessboardEl.appendChild(square);
+                }
+            }
+        }
+
+        function isPieceWhite(piece) {
+            return piece === piece.toUpperCase();
+        }
+
+        function handleSquareClick(r, c) {
+            if (gameMode === 'online' && currentTurn !== myTeam) {
+                showToast("ยังไม่ใช่ตาเดินทีมของคุณ!");
+                return;
+            }
+
+            const clickedPiece = board[r][c];
+            const isMoveValid = validMoves.some(m => m.r === r && m.c === c);
+
+            if (isMoveValid && selectedSquare) {
+                executeMove(selectedSquare.row, selectedSquare.col, r, c);
+                return;
+            }
+
+            if (clickedPiece) {
+                const pieceOwner = isPieceWhite(clickedPiece) ? 'W' : 'B';
+                if (pieceOwner === currentTurn) {
+                    selectedSquare = { row: r, col: c };
+                    validMoves = calculateValidMoves(r, c, clickedPiece);
+                    playTone(350, 'triangle', 0.05);
+                } else {
+                    selectedSquare = null;
+                    validMoves = [];
+                }
+            } else {
+                selectedSquare = null;
+                validMoves = [];
+            }
+            renderBoard();
+        }
+
+        // กฎหมากรุกเบื้องต้น
+        function calculateValidMoves(r, c, piece) {
+            let moves = [];
+            const isWhite = isPieceWhite(piece);
+            const type = piece.toLowerCase();
+
+            if (type === 'p') {
+                const dir = isWhite ? -1 : 1;
+                if (isValidCoord(r + dir, c) && !board[r + dir][c]) {
+                    moves.push({ r: r + dir, c: c });
+                    const startRow = isWhite ? 6 : 1;
+                    if (r === startRow && !board[r + dir * 2][c]) {
+                        moves.push({ r: r + dir * 2, c: c });
+                    }
+                }
+                [-1, 1].forEach(dc => {
+                    const targetCol = c + dc;
+                    if (isValidCoord(r + dir, targetCol)) {
+                        const targetPiece = board[r + dir][targetCol];
+                        if (targetPiece && isPieceWhite(targetPiece) !== isWhite) {
+                            moves.push({ r: r + dir, c: targetCol });
+                        }
+                    }
+                });
+            } else if (type === 'r') {
+                moves = moves.concat(getLinearMoves(r, c, [[1,0], [-1,0], [0,1], [0,-1]], isWhite));
+            } else if (type === 'b') {
+                moves = moves.concat(getLinearMoves(r, c, [[1,1], [1,-1], [-1,1], [-1,-1]], isWhite));
+            } else if (type === 'q') {
+                moves = moves.concat(getLinearMoves(r, c, [[1,0], [-1,0], [0,1], [0,-1], [1,1], [1,-1], [-1,1], [-1,-1]], isWhite));
+            } else if (type === 'n') {
+                const offsets = [[2,1], [2,-1], [-2,1], [-2,-1], [1,2], [1,-2], [-1,2], [-1,-2]];
+                offsets.forEach(([dr, dc]) => {
+                    const nr = r + dr, nc = c + dc;
+                    if (isValidCoord(nr, nc)) {
+                        const target = board[nr][nc];
+                        if (!target || isPieceWhite(target) !== isWhite) {
+                            moves.push({ r: nr, c: nc });
+                        }
+                    }
+                });
+            } else if (type === 'k') {
+                const offsets = [[1,0], [-1,0], [0,1], [0,-1], [1,1], [1,-1], [-1,1], [-1,-1]];
+                offsets.forEach(([dr, dc]) => {
+                    const nr = r + dr, nc = c + dc;
+                    if (isValidCoord(nr, nc)) {
+                        const target = board[nr][nc];
+                        if (!target || isPieceWhite(target) !== isWhite) {
+                            moves.push({ r: nr, c: nc });
+                        }
+                    }
+                });
+            }
+            return moves;
+        }
+
+        function getLinearMoves(r, c, directions, isWhite) {
+            const moves = [];
+            directions.forEach(([dr, dc]) => {
+                let nr = r + dr, nc = c + dc;
+                while (isValidCoord(nr, nc)) {
+                    const target = board[nr][nc];
+                    if (!target) {
+                        moves.push({ r: nr, c: nc });
+                    } else {
+                        if (isPieceWhite(target) !== isWhite) {
+                            moves.push({ r: nr, c: nc });
+                        }
+                        break;
+                    }
+                    nr += dr;
+                    nc += dc;
+                }
+            });
+            return moves;
+        }
+
+        function isValidCoord(r, c) {
+            return r >= 0 && r < 8 && c >= 0 && c < 8;
+        }
+
+        function executeMove(fromR, fromC, toR, toC) {
+            const piece = board[fromR][fromC];
+            const target = board[toR][toC];
+
+            if (target) {
+                playCaptureSound();
+                showActionToast(`${PIECES_EMOJI[piece]} งับ ${PIECES_EMOJI[target]} ไปแล้ว!`);
+            } else {
+                playMoveSound();
+            }
+
+            board[toR][toC] = piece;
+            board[fromR][fromC] = '';
+
+            // เลื่อนขั้นหมากรุกสุนัข / แมว
+            if (piece === 'P' && toR === 0) {
+                board[toR][toC] = 'Q';
+                showActionToast("🐶 น้องตูบกลายร่างเป็นราชินีอภิมหาตูบ!");
+                playVictorySound();
+            } else if (piece === 'p' && toR === 7) {
+                board[toR][toC] = 'q';
+                showActionToast("🐱 น้องแมววิวัฒนาการร่างเป็นราชินีแมวฟ้า!");
+                playVictorySound();
+            }
+
+            // ถ้ากษัตริย์โดนกิน -> จบเกม
+            if (target && target.toLowerCase() === 'k') {
+                declareWinner(currentTurn);
+                return;
+            }
+
+            currentTurn = currentTurn === 'W' ? 'B' : 'W';
+            selectedSquare = null;
+            validMoves = [];
+            renderBoard();
+            updateStatusText();
+            updateCoachAdvice();
+
+            // ส่งข้อมูลหมากที่เดินขึ้น Google Sheets ทันที
+            if (gameMode === 'online' && activeRoomId) {
+                updateOnlineBoard();
+            }
+
+            // เล่นกับบอทเอ๋อ
+            if (gameMode === 'ai' && currentTurn === 'B') {
+                setTimeout(runAIMove, 1000);
+            }
+        }
+
+        // AI เล่นกากๆๆๆ
+        function runAIMove() {
+            const aiPieces = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = board[r][c];
+                    if (piece && !isPieceWhite(piece)) {
+                        const moves = calculateValidMoves(r, c, piece);
+                        if (moves.length > 0) {
+                            aiPieces.push({ r, c, piece, moves });
+                        }
+                    }
+                }
+            }
+
+            if (aiPieces.length === 0) {
+                declareWinner('W');
+                return;
+            }
+
+            let chosenPiece = null;
+            let chosenMove = null;
+
+            const captureMoves = [];
+            aiPieces.forEach(p => {
+                p.moves.forEach(m => {
+                    if (board[m.r][m.c]) {
+                        captureMoves.push({ from: p, to: m });
+                    }
+                });
+            });
+
+            // 70% เดินสุ่มแบบกากๆ 30% ถึงพยายามกินหมาก
+            if (captureMoves.length > 0 && Math.random() > 0.7) {
+                const capture = captureMoves[Math.floor(Math.random() * captureMoves.length)];
+                chosenPiece = capture.from;
+                chosenMove = capture.to;
+            } else {
+                chosenPiece = aiPieces[Math.floor(Math.random() * aiPieces.length)];
+                chosenMove = chosenPiece.moves[Math.floor(Math.random() * chosenPiece.moves.length)];
+            }
+
+            if (chosenPiece && chosenMove) {
+                executeMove(chosenPiece.r, chosenPiece.c, chosenMove.r, chosenMove.c);
+            }
+        }
+
+        // ระบบโค้ชแนะนำแบบสดๆ เรียลไทม์
+        function updateCoachAdvice() {
+            const adviceEl = document.getElementById('coachAdvice');
+            const subAdviceEl = document.getElementById('coachSubAdvice');
+
+            if (currentTurn === 'W') {
+                let captureOpportunity = null;
+
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const piece = board[r][c];
+                        if (piece && isPieceWhite(piece)) {
+                            const moves = calculateValidMoves(r, c, piece);
+                            moves.forEach(m => {
+                                if (board[m.r][m.c] && !isPieceWhite(board[m.r][m.c])) {
+                                    captureOpportunity = { from: {r, c, piece}, to: m, target: board[m.r][m.c] };
+                                }
+                            });
+                        }
+                    }
+                }
+
+                if (captureOpportunity) {
+                    adviceEl.innerHTML = `🌟 <strong class="text-red-400">จังหวะทองมาถึงแล้ว!</strong> หมาก <strong>${PIECE_NAMES[captureOpportunity.from.piece]}</strong> สามารถลุยไปกิน <strong>${PIECE_NAMES[captureOpportunity.target]}</strong> ของแมวฟ้าได้ทันที!`;
+                    subAdviceEl.innerText = `แนะนำการเดิน: คว้าโอกาสกินฟรีนี้เลยครับ!`;
+                } else {
+                    const generalTips = [
+                        "เดินหมาคุมเซ็นเตอร์กลางสนามสีเขียวไว้ เพื่อให้กองทัพสีแดงของเราเคลื่อนย้ายสะดวกรวดเร็ว!",
+                        "ส่งม้าพุดเดิ้ลเดนตายกระโดดข้ามแนวป้องกันไปหาโอกาสสร้างความปวดหัวให้คู่แข่งกันเถอะ",
+                        "ระวังเสือดาวฟ้าแอบมองสิงโตแดงของคุณอยู่ด้วยล่ะ ป้องกันให้ดีล่ะทาสหมา!",
+                        "เจ้าแมวฟ้าค่อนข้างมึนตึ๊บอยู่ตอนนี้ รีบบุกรุมเพื่อต้อนราชาของพวกมันเข้ามุมกัน!",
+                        "สุนัขนำทางขาวแดง สามารถลุยทำแนวตั้งแนวนอนและส่องกินแบบทแยงมุมได้ล้ำหน้าสุดๆ"
+                    ];
+                    adviceEl.innerHTML = `💡 <strong>โค้ชกระซิบบอกแผน:</strong> "${generalTips[Math.floor(Math.random() * generalTips.length)]}"`;
+                    subAdviceEl.innerText = `กลยุทธ์ทีมแดง: ค่อยๆ ขยับ คุมพื้นที่ทีละน้อย`;
+                }
+            } else {
+                adviceEl.innerHTML = `💤 <strong>ตาเจ้าเหมียวสีฟ้าขยับหมาก:</strong> "แมวมึนกำลังกระซิบ แง๊วๆ แบบหลงทาง บอทตัวนี้กากพิเศษ ไม่นานต้องเดินมาแจกหมากคุณแน่นอน!"`;
+                subAdviceEl.innerText = `สถานะ: บอทแมวกำลังสุ่มตาเดินแบบงงๆ`;
+            }
+        }
+
+        function updateStatusText() {
+            const textEl = document.getElementById('gameStatusText');
+            const bannerEl = document.getElementById('gameStatusBanner');
+            const pingEl = document.getElementById('statusPing');
+
+            if (currentTurn === 'W') {
+                textEl.innerText = "ถึงตาคุณเดินแล้ว! ทีมสุนัข (🔴 สีแดง) 🐶 วิ่งลุยสวนเลย!";
+                bannerEl.className = "bg-red-950/80 border border-red-500/40 py-2.5 px-4 rounded-2xl text-center text-sm font-semibold flex items-center justify-center gap-2 transition-colors duration-300 text-red-200 shadow-lg shadow-red-500/10";
+                pingEl.className = "inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-ping";
+            } else {
+                textEl.innerText = "ตาเจ้าเหมียวมึนเดิน! ทีมแมว (🔵 สีฟ้า) 🐱 กำลังคิดแบบตลกๆ...";
+                bannerEl.className = "bg-sky-950/80 border border-sky-500/40 py-2.5 px-4 rounded-2xl text-center text-sm font-semibold flex items-center justify-center gap-2 transition-colors duration-300 text-sky-200 shadow-lg shadow-sky-500/10";
+                pingEl.className = "inline-block w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping";
+            }
+        }
+
+        // ระบบคำนวณและแจ้งสถิติผลการชนะลง Google Sheets อัตโนมัติ
+        function declareWinner(winner) {
+            const username = document.getElementById('usernameInput').value || 'นักเล่นพเนจร';
+            let outcome = "loss";
+
+            if (winner === 'W') {
+                playVictorySound();
+                showPopup("🎉 คุณชนะแล้ว!", "ทีมสุนัขแดงของคุณตลบหลังก๊วนน้องแมวสีฟ้าสำเร็จ! กระโดดโลดเต้นเพื่อฉลองชัยชนะ!");
+                stats.wins++;
+                outcome = "win";
+            } else {
+                playDefeatSound();
+                showPopup("😿 คุณแพ้แล้ว!", "เจ้าเหมียวสีฟ้าฉกฉวยสิงโตแดงของคุณสำเร็จ! แม้แต่บอทกากๆ ยังทำให้คุณแพ้ได้ ลองแก้ตัวอีกครั้งนะ!");
+                stats.losses++;
+            }
+            
+            document.getElementById('aiStats').innerText = `ชนะ ${stats.wins} | แพ้ ${stats.losses}`;
+            initGame();
+
+            // ส่งข้อมูลสถิติผู้เล่นขึ้น Google Sheets ทันที
+            if (SCRIPT_URL) {
+                fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // เพื่อความปลอดภัยของเบราว์เซอร์จาก CORS
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: "saveScore", username: username, outcome: outcome })
+                }).then(() => {
+                    setTimeout(loadLeaderboard, 1000);
+                });
+            }
+        }
+
+        function concedeGame() {
+            if (confirm("คุณต้องการโบกธงขาวและยอมจำนนให้กับน้องแมวฟ้าแสนกวนจริงหรือ?")) {
+                declareWinner('B');
+            }
+        }
+
+        function resetGame() {
+            initGame();
+            if (gameMode === 'online' && activeRoomId) {
+                updateOnlineBoard();
+            }
+            showActionToast("🔄 ทำความสะอาดและสลับกระดานเพื่อเริ่มเกมรอบใหม่!");
+        }
+
+        function selectMode(mode) {
+            gameMode = mode;
+            const btnAI = document.getElementById('btnModeAI');
+            const btnOnline = document.getElementById('btnModeOnline');
+            const roomSection = document.getElementById('onlineRoomSection');
+
+            // เคลียร์ Polling อันเดิมออกก่อนเพื่อไม่ให้ทำงานซ้อนกัน
+            if (pollingInterval) clearInterval(pollingInterval);
+
+            if (mode === 'ai') {
+                btnAI.className = "p-4 rounded-2xl border-2 border-red-500 bg-red-950/40 flex flex-col items-center justify-center text-center gap-2 transition hover:scale-105";
+                btnOnline.className = "p-4 rounded-2xl border-2 border-slate-800 bg-slate-800/40 flex flex-col items-center justify-center text-center gap-2 transition hover:scale-105";
+                roomSection.classList.add('hidden');
+                document.getElementById('playerBlackName').innerText = "บอทเหมียวมึน";
+                initGame();
+            } else {
+                btnOnline.className = "p-4 rounded-2xl border-2 border-sky-500 bg-sky-950/40 flex flex-col items-center justify-center text-center gap-2 transition hover:scale-105";
+                btnAI.className = "p-4 rounded-2xl border-2 border-slate-800 bg-slate-800/40 flex flex-col items-center justify-center text-center gap-2 transition hover:scale-105";
+                roomSection.classList.remove('hidden');
+                document.getElementById('playerBlackName').innerText = "รอคู่ต่อสู้เข้าร่วมห้อง...";
+                
+                if (!SCRIPT_URL) {
+                    showPopup("🌐 โหมดจำลองออนไลน์", "คุณสามารถลองเล่นจำลองสร้างห้องและทดสอบจับคู่ได้ หากต้องการเชื่อมฐานข้อมูลชีต ให้ใส่ลิงก์ SCRIPT_URL ในตัวโค้ดก่อนนะครับ!");
+                }
+                loadOnlineRooms();
+            }
+        }
+
+        // --- GOOGLE SHEETS API HANDLERS ---
+
+        // 1. ดึงตารางคะแนนจาก Google Sheets
+        function loadLeaderboard() {
+            const listEl = document.getElementById('leaderboardRows');
+            if (!SCRIPT_URL) {
+                listEl.innerHTML = `
+                    <div class="flex justify-between">
+                        <span>1. ทาสตูบคลั่งรัก</span>
+                        <span class="text-red-400 font-bold">ชนะ 15 ครั้ง</span>
+                    </div>
+                    <div class="flex justify-between text-yellow-400">
+                        <span>2. ${document.getElementById('usernameInput').value}</span>
+                        <span class="text-red-400 font-bold">ชนะ ${stats.wins} ครั้ง</span>
+                    </div>
+                `;
+                return;
+            }
+
+            fetch(`${SCRIPT_URL}?action=getLeaderboard`)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success && res.data.length > 0) {
+                        listEl.innerHTML = '';
+                        res.data.forEach((item, index) => {
+                            const row = document.createElement('div');
+                            row.className = "flex justify-between border-b border-slate-800/50 pb-1";
+                            row.innerHTML = `
+                                <span>${index + 1}. ${item.username}</span>
+                                <span class="text-red-400 font-bold">ชนะ ${item.wins} / แพ้ ${item.losses}</span>
+                            `;
+                            listEl.appendChild(row);
+                        });
+                    } else {
+                        listEl.innerHTML = '<div class="text-center text-slate-500">ไม่มีประวัติคะแนนในขณะนี้</div>';
+                    }
+                })
+                .catch(() => {
+                    listEl.innerHTML = '<div class="text-center text-rose-500">ไม่สามารถติดต่อ Google Sheets ได้</div>';
+                });
+        }
+
+        // 2. ดึงห้องว่างที่กำลังรอผู้เล่นอยู่
+        function loadOnlineRooms() {
+            const listEl = document.getElementById('roomsList');
+            if (!SCRIPT_URL) {
+                listEl.innerHTML = `
+                    <div class="bg-slate-800/60 p-3 rounded-2xl flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-sm text-slate-200">ห้องประลองขนมกระดูก</div>
+                            <div class="text-[10px] text-slate-400">เจ้าของห้อง: พุดเดิ้ลเดนตาย</div>
+                        </div>
+                        <button onclick="mockJoinRoom()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded-xl font-semibold transition">เข้าร่วม</button>
+                    </div>
+                `;
+                return;
+            }
+
+            fetch(`${SCRIPT_URL}?action=getRooms`)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success && res.data.length > 0) {
+                        listEl.innerHTML = '';
+                        res.data.forEach(room => {
+                            const item = document.createElement('div');
+                            item.className = "bg-slate-800/60 border border-slate-700/50 p-3 rounded-2xl flex justify-between items-center transition hover:bg-slate-800";
+                            item.innerHTML = `
+                                <div>
+                                    <div class="font-bold text-sm text-slate-200">${room.roomName}</div>
+                                    <div class="text-[10px] text-slate-400">เจ้าบ้าน: ${room.host}</div>
+                                </div>
+                                <button onclick="joinRoom('${room.roomId}')" class="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded-xl font-semibold transition">
+                                    เข้าร่วม
+                                </button>
+                            `;
+                            listEl.appendChild(item);
+                        });
+                    } else {
+                        listEl.innerHTML = '<div class="text-center py-4 text-slate-500 text-sm">ไม่มีห้องว่างขณะนี้ กดสร้างห้องได้เลย!</div>';
+                    }
+                });
+        }
+
+        // 3. สร้างห้องใหม่บน Google Sheets
+        function createNewRoom() {
+            const roomName = prompt("โปรดระบุชื่อห้องเล่นสงครามทีมหมาแดงของคุณ:", "ดวลเดือดกระดูกไก่ย่าง");
+            if (!roomName) return;
+            const host = document.getElementById('usernameInput').value || 'นักเล่นพเนจร';
+
+            if (!SCRIPT_URL) {
+                activeRoomId = "mock_" + Date.now();
+                showActionToast("🔑 สร้างห้องจำลองสำเร็จ! รอคู่ต่อสู้ฝั่งแมวฟ้า 4 วินาที...");
+                setTimeout(() => {
+                    document.getElementById('playerBlackName').innerText = "คนอุ้มแมวส้ม (บอทจำลอง)";
+                    showPopup("🎉 พบคู่ต่อสู้!", "คู่ต่อสู้ฝั่งแมวฟ้าได้ขยับขยายเข้าสู่ห้องประลองของคุณแล้ว!");
+                    myTeam = 'W'; // โฮสต์จะได้เล่นทีมแดง (White)
+                }, 4000);
+                return;
+            }
+
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: "createRoom", roomName: roomName, host: host })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    activeRoomId = res.roomId;
+                    myTeam = 'W'; // โฮสต์ได้เล่นแดง
+                    showActionToast("🔑 สร้างห้องว่างเรียบร้อยแล้ว กำลังดักฟังคู่แข่งผ่าน Google Sheets...");
+                    startRoomPolling();
+                }
+            });
+        }
+
+        // 4. เข้าร่วมห้องของผู้เล่นคนอื่น
+        function joinRoom(roomId) {
+            const guest = document.getElementById('usernameInput').value || 'นักเล่นพเนจร';
+
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: "joinRoom", roomId: roomId, guest: guest })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    activeRoomId = roomId;
+                    myTeam = 'B'; // ผู้เข้ามาร่วมเล่นทีหลังจะเล่นทีมแมวสีฟ้า (Black)
+                    document.getElementById('playerBlackName').innerText = `${guest} (คุณ)`;
+                    document.getElementById('playerWhiteName').innerText = res.host;
+                    showActionToast(`🐾 เข้าสู่ห้องประลองสำเร็จ! คุณคือฝ่ายแมวสีฟ้า (🔵)`);
+                    startRoomPolling();
+                }
+            });
+        }
+
+        // 5. ส่งความเคลื่อนไหวล่าสุดขึ้นคลาวด์ชีต
+        function updateOnlineBoard() {
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: "updateGame", roomId: activeRoomId, board: board, turn: currentTurn })
+            });
+        }
+
+        // 6. ดักฟังและซิงค์ข้อมูลกระดาน Real-time (ทำ Polling ทุกๆ 2.5 วินาที)
+        function startRoomPolling() {
+            if (pollingInterval) clearInterval(pollingInterval);
+            pollingInterval = setInterval(() => {
+                if (!activeRoomId) return;
+
+                fetch(`${SCRIPT_URL}?action=getGameState&roomId=${activeRoomId}`)
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            // ซิงค์ชื่อคู่แข่งในกรณีที่มีคนเข้ามาจอยเพิ่ม
+                            if (myTeam === 'W' && res.guest) {
+                                document.getElementById('playerBlackName').innerText = res.guest;
+                            } else if (myTeam === 'B') {
+                                document.getElementById('playerWhiteName').innerText = res.host;
+                            }
+
+                            // ตรวจพบการขยับหมากจากฝั่งตรงข้าม
+                            if (JSON.stringify(board) !== JSON.stringify(res.board)) {
+                                board = res.board;
+                                currentTurn = res.turn;
+                                playMoveSound();
+                                renderBoard();
+                                updateStatusText();
+                                updateCoachAdvice();
+                            }
+                        }
+                    });
+            }, 2500);
+        }
+
+        // ตัวช่วยจำลองแบบด่วน
+        function mockJoinRoom() {
+            activeRoomId = "mock_" + Date.now();
+            myTeam = 'B';
+            document.getElementById('playerWhiteName').innerText = "พุดเดิ้ลเดนตาย";
+            document.getElementById('playerBlackName').innerText = `${document.getElementById('usernameInput').value} (คุณ)`;
+            showActionToast("เข้าสู่ห้องประลองสำเร็จ! คุณเป็นฝ่ายแมวฟ้า 🔵 รอตาเดินฝ่ายหมาแดง!");
+        }
+
+        // ระบบ Toast แจ้งเตือนยอดนิยม
+        function showActionToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = "fixed bottom-5 right-5 bg-slate-900 border-2 border-red-500 text-white font-semibold text-sm px-5 py-3 rounded-2xl shadow-2xl transition duration-300 z-50 flex items-center gap-2 transform translate-y-10 opacity-0";
+            toast.innerHTML = `💬 <span class="text-red-300">${msg}</span>`;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-10', 'opacity-0');
+            }, 50);
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function showToast(msg) {
+            showActionToast(msg);
+        }
+
+        function showPopup(title, text) {
+            const overlay = document.createElement('div');
+            overlay.className = "fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in";
+            
+            const box = document.createElement('div');
+            box.className = "bg-slate-900 border border-red-500/30 max-w-md w-full p-6 rounded-3xl text-center shadow-2xl";
+            box.innerHTML = `
+                <div class="text-4xl mb-3">🐶 VS 🐱</div>
+                <h3 class="text-xl font-bold mb-2 text-red-400">${title}</h3>
+                <p class="text-sm text-slate-400 mb-6 leading-relaxed">${text}</p>
+                <button class="bg-red-600 hover:bg-red-500 text-white font-bold px-6 py-2.5 rounded-2xl transition shadow-lg shadow-red-500/30" onclick="this.parentElement.parentElement.remove()">
+                    ออกไปบดขยี้เจ้าแมวฟ้า!
+                </button>
+            `;
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        }
+    </script>
+</body>
+</html>
